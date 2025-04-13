@@ -10,6 +10,7 @@
 #include <shlobj.h>
 #include <knownfolders.h>
 #include "tray_manager.h"
+using namespace Microsoft::WRL;
 
 #pragma comment(lib, "user32.lib")
 #pragma comment(lib, "ole32.lib")
@@ -31,7 +32,9 @@ struct Overlay {
     Microsoft::WRL::ComPtr<ICoreWebView2> webview;
     HWND hwnd = nullptr;
     bool visible = false;
-    bool loaded = false;
+    EventRegistrationToken navCompletedTokenBlank = { 0 };
+    EventRegistrationToken navCompletedTokenContent = { 0 };
+    std::wstring userDataFolder; // Store the user data folder for environment recreation
 };
 
 struct OverlayManager::Impl {
@@ -59,7 +62,7 @@ struct OverlayManager::Impl {
         CreateDirectoryW(userDataFolder.c_str(), nullptr);
 
         for (auto& overlay : overlays) {
-            // Add WS_EX_NOACTIVATE to prevent focus stealing
+            overlay.userDataFolder = userDataFolder; // Store the user data folder
             HWND hwnd = CreateWindowExW(
                 WS_EX_TOPMOST | WS_EX_LAYERED | WS_EX_NOREDIRECTIONBITMAP | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
                 L"STATIC", overlay.name.c_str(), WS_POPUP,
@@ -121,6 +124,7 @@ struct OverlayManager::Impl {
         OutputDebugStringW(L"Finished CreateOverlayWindows\n");
     }
 
+
     void ToggleOverlay(size_t index) {
         if (index >= overlays.size()) {
             OutputDebugStringW(L"ToggleOverlay: Invalid index\n");
@@ -130,22 +134,74 @@ struct OverlayManager::Impl {
         overlay.visible = !overlay.visible;
         OutputDebugStringW((L"Toggling " + overlay.name + L" to " + (overlay.visible ? L"visible" : L"hidden") + L"\n").c_str());
         if (overlay.controller) {
-            if (overlay.visible && !overlay.loaded && overlay.webview) {
-                HRESULT navResult = overlay.webview->Navigate(overlay.url.c_str());
-                if (SUCCEEDED(navResult)) {
-                    OutputDebugStringW((L"Navigated to " + overlay.url + L"\n").c_str());
-                    overlay.loaded = true;
-                }
-                else {
-                    OutputDebugStringW((L"Failed to navigate to " + overlay.url + L": HRESULT " + std::to_wstring(navResult) + L"\n").c_str());
-                }
-            }
-            overlay.controller->put_IsVisible(overlay.visible);
-            SetLayeredWindowAttributes(overlay.hwnd, 0, overlay.visible ? 255 : 0, LWA_ALPHA);
-            ShowWindow(overlay.hwnd, overlay.visible ? SW_SHOWNA : SW_HIDE);
+            // Close the existing controller and environment
+            overlay.controller->Close();
+            overlay.controller.Reset();
+            overlay.webview.Reset();
+            overlay.env.Reset();
+            ShowWindow(overlay.hwnd, SW_HIDE);
             UpdateWindow(overlay.hwnd);
-            OutputDebugStringW((L"Updated window visibility for " + overlay.name + L"\n").c_str());
         }
+
+        if (overlay.visible) {
+            // Recreate the WebView2 environment and controller
+            HRESULT hr = CreateCoreWebView2EnvironmentWithOptions(
+                nullptr, overlay.userDataFolder.c_str(), nullptr,
+                Microsoft::WRL::Callback<ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler>(
+                    [&overlay](HRESULT result, ICoreWebView2Environment* env) -> HRESULT {
+                        if (FAILED(result) || !env) {
+                            OutputDebugStringW((L"Failed to recreate WebView2 env for " + overlay.name + L": HRESULT " + std::to_wstring(result) + L"\n").c_str());
+                            return result;
+                        }
+                        overlay.env = env;
+                        OutputDebugStringW((L"Recreated WebView2 env for " + overlay.name + L"\n").c_str());
+                        return env->CreateCoreWebView2Controller(
+                            overlay.hwnd,
+                            Microsoft::WRL::Callback<ICoreWebView2CreateCoreWebView2ControllerCompletedHandler>(
+                                [&overlay](HRESULT result, ICoreWebView2Controller* controller) -> HRESULT {
+                                    if (FAILED(result) || !controller) {
+                                        OutputDebugStringW((L"Failed to recreate WebView2 controller for " + overlay.name + L": HRESULT " + std::to_wstring(result) + L"\n").c_str());
+                                        return result;
+                                    }
+                                    overlay.controller = controller;
+                                    OutputDebugStringW((L"Recreated WebView2 controller for " + overlay.name + L"\n").c_str());
+                                    RECT bounds = { 0, 0, 3840, 2160 };
+                                    controller->put_Bounds(bounds);
+                                    controller->put_IsVisible(true);
+                                    Microsoft::WRL::ComPtr<ICoreWebView2Controller4> controller4;
+                                    HRESULT hr = controller->QueryInterface(IID_PPV_ARGS(&controller4));
+                                    if (SUCCEEDED(hr) && controller4) {
+                                        COREWEBVIEW2_COLOR transparent = { 0, 0, 0, 0 };
+                                        controller4->put_DefaultBackgroundColor(transparent);
+                                        OutputDebugStringW((L"Set transparent background for " + overlay.name + L"\n").c_str());
+                                    }
+                                    controller->get_CoreWebView2(&overlay.webview);
+                                    if (!overlay.webview) {
+                                        OutputDebugStringW((L"Failed to get WebView2 for " + overlay.name + L"\n").c_str());
+                                        return E_FAIL;
+                                    }
+                                    Microsoft::WRL::ComPtr<ICoreWebView2Settings> settings;
+                                    overlay.webview->get_Settings(&settings);
+                                    if (settings) {
+                                        settings->put_AreDefaultContextMenusEnabled(false);
+                                    }
+                                    HRESULT navResult = overlay.webview->Navigate(overlay.url.c_str());
+                                    if (SUCCEEDED(navResult)) {
+                                        OutputDebugStringW((L"Navigated to " + overlay.url + L"\n").c_str());
+                                    }
+                                    else {
+                                        OutputDebugStringW((L"Failed to navigate to " + overlay.url + L": HRESULT " + std::to_wstring(navResult) + L"\n").c_str());
+                                    }
+                                    ShowWindow(overlay.hwnd, SW_SHOWNA);
+                                    UpdateWindow(overlay.hwnd);
+                                    return S_OK;
+                                }).Get());
+                    }).Get());
+            if (FAILED(hr)) {
+                OutputDebugStringW((L"CreateCoreWebView2EnvironmentWithOptions failed for " + overlay.name + L": HRESULT " + std::to_wstring(hr) + L"\n").c_str());
+            }
+        }
+        OutputDebugStringW((L"Updated window visibility for " + overlay.name + L"\n").c_str());
     }
 
     static HRESULT WINAPI DetouredPresent(IDXGISwapChain* swapChain, UINT syncInterval, UINT flags) {
@@ -214,6 +270,14 @@ struct OverlayManager::Impl {
             DispatchMessage(&msg);
         }
         tray_manager.CleanupTrayIcon();
+        for (auto& overlay : overlays) {
+            if (overlay.navCompletedTokenBlank.value != 0) {
+                overlay.webview->remove_NavigationCompleted(overlay.navCompletedTokenBlank);
+            }
+            if (overlay.navCompletedTokenContent.value != 0) {
+                overlay.webview->remove_NavigationCompleted(overlay.navCompletedTokenContent);
+            }
+        }
         CoUninitialize();
         OutputDebugStringW(L"Exiting Run\n");
     }
