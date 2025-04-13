@@ -1,6 +1,104 @@
 <!DOCTYPE html>
 <html>
-<body style="background-color: red;">
-    <h1>Qoo PDF Overlay 2</h1>
+<head>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: transparent; /* Black for LWA_COLORKEY transparency */
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+        }
+        .content {
+            position: absolute;
+            top: 200px;
+            left: 300px;
+            width: 1200px;
+            height: 800px;
+            background: linear-gradient(135deg, #1A1A3D 0%, #2A2A5A 100%); /* Deep blue gradient */
+            border: 4px solid;
+            border-image: linear-gradient(45deg, #00FFFF, #FF00FF) 1;
+            border-radius: 15px;
+            box-shadow: 0 0 20px rgba(0, 255, 255, 0.5), 0 0 20px rgba(255, 0, 255, 0.5); /* Neon glow */
+            animation: glowPulse 2s infinite alternate;
+            overflow: hidden;
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+        }
+        @keyframes glowPulse {
+            0% { box-shadow: 0 0 20px rgba(0, 255, 255, 0.5), 0 0 20px rgba(255, 0, 255, 0.5); }
+            100% { box-shadow: 0 0 30px rgba(0, 255, 255, 0.8), 0 0 30px rgba(255, 0, 255, 0.8); }
+        }
+        .logo {
+            width: 300px;
+            height: auto;
+            margin-bottom: 20px;
+        }
+        .header {
+            font-family: 'Press Start 2P', cursive;
+            font-size: 28px;
+            color: #FFFFFF;
+            text-shadow: 0 0 10px #00FFFF, 0 0 20px #FF00FF;
+            animation: flicker 3s infinite;
+            margin: 0;
+        }
+        @keyframes flicker {
+            0%, 19%, 21%, 23%, 25%, 54%, 56%, 100% { opacity: 1; }
+            20%, 24%, 55% { opacity: 0.8; }
+        }
+        .custom-content {
+            width: 100%;
+            height: 600px;
+            background-color: rgba(0, 0, 0, 0.5); /* Semi-transparent for content */
+            border: 2px solid #00FFFF;
+            border-radius: 10px;
+            margin-top: 20px;
+            overflow: auto;
+            color: #FFFFFF;
+            font-family: Arial, sans-serif;
+            font-size: 16px;
+            padding: 10px;
+            box-sizing: border-box;
+        }
+        .custom-content embed, .custom-content img {
+            width: 100%;
+            height: 100%;
+        }
+        .joystick {
+            position: absolute;
+            width: 40px;
+            height: 40px;
+            background: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0MCIgaGVpZ2h0PSI0MCIgdmlld0JveD0iMCAwIDI0IDI0Ij48cGF0aCBmaWxsPSIjMDBGRkZGIiBkPSJNMTIgMTRhMiAyIDAgMCAxIDIgMnYyYzAgMS4xLS45IDItMiAyaC0yYy0xLjEgMC0yLS45LTItMnYtMmEyIDIgMCAwIDEgMi0yem0wLTEyYTcgNyAwIDAgMC03IDdoMTRhNyA3IDAgMCAwLTctN3oiLz48L3N2Zz4=') no-repeat center;
+        }
+        .button {
+            position: absolute;
+            width: 30px;
+            height: 30px;
+            background: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIzMCIgaGVpZ2h0PSIzMCIgdmlld0JveD0iMCAwIDI0IDI0Ij48Y2lyY2xlIGN4PSIxMiIgY3k9IjEyIiByPSIxMCIgZmlsbD0iI0ZGMDBGRiIvPjwvc3ZnPg==') no-repeat center;
+        }
+        .top-left { top: 10px; left: 10px; }
+        .top-right { top: 10px; right: 10px; }
+        .bottom-left { bottom: 10px; left: 10px; }
+        .bottom-right { bottom: 10px; right: 10px; }
+    </style>
+</head>
+<body>
+    <div class="content">
+        <img src="logo.jpg" class="logo" alt="Xtreme Gaming Cabinets Logo">
+        <h1 class="header">Arcade Overlay</h1>
+        <div class="custom-content" style="display: flex;">
+            <img src="wheel.jpg" alt="Description" width="300" style="height: auto;"/>
+            <iframe src="manual.pdf" style="width: 100%; height: 100%; border: none;"></iframe>
+        </div>
+        <div class="joystick top-left"></div>
+        <div class="button top-right"></div>
+        <div class="button bottom-left"></div>
+        <div class="joystick bottom-right"></div>
+    </div>
 </body>
 </html>

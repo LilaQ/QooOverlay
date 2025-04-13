@@ -56,9 +56,9 @@ struct OverlayManager::Impl {
         CreateDirectoryW(userDataFolder.c_str(), nullptr);
 
         for (auto& overlay : overlays) {
-            HWND hwnd = CreateWindowExW(WS_EX_TOPMOST | WS_EX_LAYERED,
+            HWND hwnd = CreateWindowExW(WS_EX_TOPMOST | WS_EX_LAYERED | WS_EX_NOREDIRECTIONBITMAP,
                 L"STATIC", overlay.name.c_str(), WS_POPUP,
-                0, 0, 1920, 1080, nullptr, nullptr, GetModuleHandle(nullptr), nullptr);
+                0, 0, 3840, 2160, nullptr, nullptr, GetModuleHandle(nullptr), nullptr);
             if (!hwnd) {
                 OutputDebugStringW((L"Failed to create window for " + overlay.name + L"\n").c_str());
                 continue;
@@ -86,11 +86,21 @@ struct OverlayManager::Impl {
                                     }
                                     overlay.controller = controller;
                                     OutputDebugStringW((L"Created WebView2 controller for " + overlay.name + L"\n").c_str());
-                                    // Set bounds
-                                    RECT bounds = { 0, 0, 1920, 1080 };
+                                    // Set bounds for 4K
+                                    RECT bounds = { 0, 0, 3840, 2160 };
                                     controller->put_Bounds(bounds);
                                     controller->put_IsVisible(false); // Start hidden
-                                    OutputDebugStringW((L"Set bounds for " + overlay.name + L"\n").c_str());
+                                    // Set transparent background
+                                    Microsoft::WRL::ComPtr<ICoreWebView2Controller4> controller4;
+                                    HRESULT hr = controller->QueryInterface(IID_PPV_ARGS(&controller4));
+                                    if (SUCCEEDED(hr) && controller4) {
+                                        COREWEBVIEW2_COLOR transparent = { 0, 0, 0, 0 }; // ARGB: fully transparent
+                                        controller4->put_DefaultBackgroundColor(transparent);
+                                        OutputDebugStringW((L"Set transparent background for " + overlay.name + L"\n").c_str());
+                                    }
+                                    else {
+                                        OutputDebugStringW((L"Failed to get ICoreWebView2Controller4 for " + overlay.name + L"\n").c_str());
+                                    }
                                     Microsoft::WRL::ComPtr<ICoreWebView2> webview;
                                     controller->get_CoreWebView2(&webview);
                                     if (webview) {
@@ -102,6 +112,8 @@ struct OverlayManager::Impl {
                                             OutputDebugStringW((L"Failed to navigate to " + overlay.url + L": HRESULT " + std::to_wstring(navResult) + L"\n").c_str());
                                         }
                                     }
+                                    // Set colorkey for transparency
+                                    SetLayeredWindowAttributes(overlay.hwnd, RGB(0, 0, 0), 255, LWA_COLORKEY | LWA_ALPHA);
                                     // Show window
                                     ShowWindow(overlay.hwnd, SW_HIDE);
                                     UpdateWindow(overlay.hwnd);
@@ -125,7 +137,7 @@ struct OverlayManager::Impl {
         OutputDebugStringW((L"Toggling " + overlay.name + L" to " + (overlay.visible ? L"visible" : L"hidden") + L"\n").c_str());
         if (overlay.controller) {
             overlay.controller->put_IsVisible(overlay.visible);
-            SetLayeredWindowAttributes(overlay.hwnd, 0, overlay.visible ? 255 : 0, LWA_ALPHA);
+            SetLayeredWindowAttributes(overlay.hwnd, RGB(0, 0, 0), overlay.visible ? 255 : 0, LWA_COLORKEY | LWA_ALPHA);
             ShowWindow(overlay.hwnd, overlay.visible ? SW_SHOW : SW_HIDE);
             UpdateWindow(overlay.hwnd);
             OutputDebugStringW((L"Updated window visibility for " + overlay.name + L"\n").c_str());
@@ -190,7 +202,7 @@ struct OverlayManager::Impl {
             if (msg.message == WM_HOTKEY) {
                 OutputDebugStringW((L"WM_HOTKEY received: wParam = " + std::to_wstring(msg.wParam) + L"\n").c_str());
                 for (size_t i = 0; i < overlays.size(); ++i) {
-                    if (msg.wParam == (i + 1)) {
+                    if (msg.wParam == static_cast<int>(i + 1)) {
                         ToggleOverlay(i);
                     }
                 }
@@ -211,7 +223,7 @@ OverlayManager::OverlayManager() : impl(std::make_unique<Impl>()) {
 OverlayManager::~OverlayManager() = default;
 void OverlayManager::AddOverlay(const std::wstring& name, const std::wstring& htmlPath, UINT modifiers, UINT key) {
     impl->AddOverlay(name, htmlPath, modifiers, key);
-    BOOL result = RegisterHotKey(nullptr, impl->overlays.size(), modifiers, key);
+    BOOL result = RegisterHotKey(nullptr, static_cast<int>(impl->overlays.size()), modifiers, key);
     OutputDebugStringW((L"RegisterHotKey for " + name + L": " + (result ? L"success" : L"failed") + L"\n").c_str());
 }
 void OverlayManager::Run() {
