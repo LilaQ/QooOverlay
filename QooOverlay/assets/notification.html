@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Game Notification</title>
+    <link href="https://fonts.googleapis.com/css2?family=Bangers&display=swap" rel="stylesheet">
+    <style>
+        /* Reset and setup for overlay */
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            align-items: flex-start;
+            justify-content: center;
+            height: 100vh;
+            background: transparent;
+            overflow: hidden;
+        }
+
+        /* Notification container */
+        .notification {
+            background: linear-gradient(135deg, rgba(255, 255, 255, 0.95), rgba(240, 240, 240, 0.9));
+            border-left: 8px solid #7c3aed;
+            border-radius: 11px;
+            padding: 21px;
+            margin-top: 70px;
+            max-width: 770px;
+            min-width: 420px;
+            display: flex;
+            align-items: center;
+            gap: 21px;
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2), inset 0 1px 3px rgba(255, 255, 255, 0.2);
+            animation: slideIn 0.5s cubic-bezier(0.7, -0.3, 0.3, 1.3), glow 1.5s infinite alternate;
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* Purple particle effect */
+        .notification::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -50px;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(circle at 0% 50%, rgba(124, 58, 237, 0.5) 2px, transparent 3px),
+                        radial-gradient(circle at 10% 60%, rgba(124, 58, 237, 0.4) 3px, transparent 4px),
+                        radial-gradient(circle at 5% 40%, rgba(124, 58, 237, 0.3) 2px, transparent 3px);
+            opacity: 0;
+            animation: particles 0.5s ease-out;
+            pointer-events: none;
+        }
+
+        /* Icon */
+        .notification .icon {
+            width: 56px;
+            height: 56px;
+            background: #7c3aed;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 33.6px;
+            color: #fff;
+            flex-shrink: 0;
+            order: 1; /* Icon on the right */
+        }
+
+        /* Description */
+        .notification .description {
+            font-family: 'Bangers', sans-serif;
+            color: #333;
+            font-size: 33.6px; /* 40% larger */
+            line-height: 1.4;
+            margin: 0;
+            flex: 1;
+        }
+
+        /* Highlighted text */
+        .notification .highlight {
+            color: #7c3aed;
+        }
+
+        /* Slide-in animation with bounce */
+        @keyframes slideIn {
+            0% {
+                transform: translateX(-100%) scale(0.9);
+                opacity: 0;
+            }
+            80% {
+                transform: translateX(0) scale(1.05);
+                opacity: 1;
+            }
+            100% {
+                transform: translateX(0) scale(1);
+                opacity: 1;
+            }
+        }
+
+        /* Particle animation */
+        @keyframes particles {
+            0% {
+                opacity: 1;
+                transform: translateX(0);
+            }
+            100% {
+                opacity: 0;
+                transform: translateX(100px);
+            }
+        }
+
+        /* Subtle glow effect */
+        @keyframes glow {
+            from {
+                box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2), inset 0 1px 3px rgba(255, 255, 255, 0.2);
+            }
+            to {
+                box-shadow: 0 10px 24px rgba(124, 58, 237, 0.3), inset 0 1px 4px rgba(255, 255, 255, 0.3);
+            }
+        }
+
+        /* Slide-out animation with bounce */
+        @keyframes slideOut {
+            0% {
+                transform: translateX(0) scale(1);
+                opacity: 1;
+            }
+            20% {
+                transform: translateX(0) scale(1.05);
+                opacity: 1;
+            }
+            100% {
+                transform: translateX(100%) scale(0.9);
+                opacity: 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="notification">
+        <p class="description">
+            <span class="highlight">P1</span> uses pad, <span class="highlight">P2</span> grabs the Lightgun.<br>To press <span class="highlight">START</span> you want to press <span class="highlight">Trigger </span>+<span class="highlight"> A </span>+<span class="highlight"> B</span>
+        </p>
+        <div class="icon">🎮</div>
+    </div>
+    <script>
+        // Auto-dismiss after 4 seconds
+        setTimeout(() => {
+            const notification = document.querySelector('.notification');
+            notification.style.animation = 'slideOut 0.5s cubic-bezier(0.7, -0.3, 0.3, 1.3)';
+            setTimeout(() => notification.remove(), 500);
+        }, 4000);
+    </script>
+</body>
+</html>
