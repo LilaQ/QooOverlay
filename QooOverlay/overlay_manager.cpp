@@ -113,7 +113,7 @@ struct OverlayManager::Impl {
                                         }
                                     }
                                     // Set colorkey for transparency
-                                    SetLayeredWindowAttributes(overlay.hwnd, RGB(0, 0, 0), 255, LWA_COLORKEY | LWA_ALPHA);
+                                    SetLayeredWindowAttributes(overlay.hwnd, RGB(0, 0, 0), 255, LWA_ALPHA);
                                     // Show window
                                     ShowWindow(overlay.hwnd, SW_HIDE);
                                     UpdateWindow(overlay.hwnd);
@@ -137,7 +137,7 @@ struct OverlayManager::Impl {
         OutputDebugStringW((L"Toggling " + overlay.name + L" to " + (overlay.visible ? L"visible" : L"hidden") + L"\n").c_str());
         if (overlay.controller) {
             overlay.controller->put_IsVisible(overlay.visible);
-            SetLayeredWindowAttributes(overlay.hwnd, RGB(0, 0, 0), overlay.visible ? 255 : 0, LWA_COLORKEY | LWA_ALPHA);
+            SetLayeredWindowAttributes(overlay.hwnd, RGB(0, 0, 0), overlay.visible ? 255 : 0, LWA_ALPHA);
             ShowWindow(overlay.hwnd, overlay.visible ? SW_SHOW : SW_HIDE);
             UpdateWindow(overlay.hwnd);
             OutputDebugStringW((L"Updated window visibility for " + overlay.name + L"\n").c_str());
