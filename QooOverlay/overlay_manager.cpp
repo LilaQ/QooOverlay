@@ -9,6 +9,7 @@
 #include <WebView2.h>
 #include <shlobj.h>
 #include <knownfolders.h>
+#include "tray_manager.h" // Include the new tray manager
 
 #pragma comment(lib, "user32.lib")
 #pragma comment(lib, "ole32.lib")
@@ -37,6 +38,7 @@ struct OverlayManager::Impl {
     Microsoft::WRL::ComPtr<IDXGISwapChain> swap_chain;
     PFN_Present TruePresent = nullptr;
     static OverlayManager::Impl* instance;
+    TrayManager tray_manager; // Tray manager instance
 
     void AddOverlay(const std::wstring& name, const std::wstring& url, UINT modifiers, UINT key) {
         overlays.push_back({ name, url, modifiers, key });
@@ -45,7 +47,6 @@ struct OverlayManager::Impl {
 
     void CreateOverlayWindows() {
         OutputDebugStringW(L"Starting CreateOverlayWindows\n");
-        // Get user data folder (%APPDATA%\QooOverlay)
         wchar_t* appDataPath = nullptr;
         if (FAILED(SHGetKnownFolderPath(FOLDERID_RoamingAppData, 0, nullptr, &appDataPath))) {
             OutputDebugStringW(L"Failed to get AppData path\n");
@@ -86,15 +87,13 @@ struct OverlayManager::Impl {
                                     }
                                     overlay.controller = controller;
                                     OutputDebugStringW((L"Created WebView2 controller for " + overlay.name + L"\n").c_str());
-                                    // Set bounds for 4K
                                     RECT bounds = { 0, 0, 3840, 2160 };
                                     controller->put_Bounds(bounds);
-                                    controller->put_IsVisible(false); // Start hidden
-                                    // Set transparent background
+                                    controller->put_IsVisible(false);
                                     Microsoft::WRL::ComPtr<ICoreWebView2Controller4> controller4;
                                     HRESULT hr = controller->QueryInterface(IID_PPV_ARGS(&controller4));
                                     if (SUCCEEDED(hr) && controller4) {
-                                        COREWEBVIEW2_COLOR transparent = { 0, 0, 0, 0 }; // ARGB: fully transparent
+                                        COREWEBVIEW2_COLOR transparent = { 0, 0, 0, 0 };
                                         controller4->put_DefaultBackgroundColor(transparent);
                                         OutputDebugStringW((L"Set transparent background for " + overlay.name + L"\n").c_str());
                                     }
@@ -112,9 +111,7 @@ struct OverlayManager::Impl {
                                             OutputDebugStringW((L"Failed to navigate to " + overlay.url + L": HRESULT " + std::to_wstring(navResult) + L"\n").c_str());
                                         }
                                     }
-                                    // Set colorkey for transparency
-                                    SetLayeredWindowAttributes(overlay.hwnd, RGB(0, 0, 0), 255, LWA_ALPHA);
-                                    // Show window
+                                    SetLayeredWindowAttributes(overlay.hwnd, 0, 255, LWA_ALPHA);
                                     ShowWindow(overlay.hwnd, SW_HIDE);
                                     UpdateWindow(overlay.hwnd);
                                     return S_OK;
@@ -137,7 +134,7 @@ struct OverlayManager::Impl {
         OutputDebugStringW((L"Toggling " + overlay.name + L" to " + (overlay.visible ? L"visible" : L"hidden") + L"\n").c_str());
         if (overlay.controller) {
             overlay.controller->put_IsVisible(overlay.visible);
-            SetLayeredWindowAttributes(overlay.hwnd, RGB(0, 0, 0), overlay.visible ? 255 : 0, LWA_ALPHA);
+            SetLayeredWindowAttributes(overlay.hwnd, 0, overlay.visible ? 255 : 0, LWA_ALPHA);
             ShowWindow(overlay.hwnd, overlay.visible ? SW_SHOW : SW_HIDE);
             UpdateWindow(overlay.hwnd);
             OutputDebugStringW((L"Updated window visibility for " + overlay.name + L"\n").c_str());
@@ -148,7 +145,6 @@ struct OverlayManager::Impl {
         OutputDebugStringW(L"DetouredPresent called\n");
         if (!instance) return E_FAIL;
         if (!instance->TruePresent) {
-            // Hook the swap chain's Present
             void** vtable = *(void***)swapChain;
             instance->TruePresent = (PFN_Present)vtable[8];
             HRESULT hr = DetourTransactionBegin();
@@ -181,7 +177,6 @@ struct OverlayManager::Impl {
 
     void HookDirectX() {
         OutputDebugStringW(L"Starting HookDirectX\n");
-        // Initialize without creating a device; hooking happens in DetouredPresent
         OutputDebugStringW(L"HookDirectX deferred to DetouredPresent\n");
     }
 
@@ -194,6 +189,7 @@ struct OverlayManager::Impl {
         }
         OutputDebugStringW(L"COM initialized\n");
         instance = this;
+        tray_manager.InitTrayIcon(); // Initialize tray icon
         HookDirectX();
         CreateOverlayWindows();
 
@@ -210,6 +206,7 @@ struct OverlayManager::Impl {
             TranslateMessage(&msg);
             DispatchMessage(&msg);
         }
+        tray_manager.CleanupTrayIcon(); // Clean up tray icon on exit
         CoUninitialize();
         OutputDebugStringW(L"Exiting Run\n");
     }
