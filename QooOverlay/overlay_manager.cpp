@@ -9,7 +9,7 @@
 #include <WebView2.h>
 #include <shlobj.h>
 #include <knownfolders.h>
-#include "tray_manager.h" // Include the new tray manager
+#include "tray_manager.h"
 
 #pragma comment(lib, "user32.lib")
 #pragma comment(lib, "ole32.lib")
@@ -28,8 +28,10 @@ struct Overlay {
     UINT hotkey_vk;
     Microsoft::WRL::ComPtr<ICoreWebView2Environment> env;
     Microsoft::WRL::ComPtr<ICoreWebView2Controller> controller;
+    Microsoft::WRL::ComPtr<ICoreWebView2> webview;
     HWND hwnd = nullptr;
     bool visible = false;
+    bool loaded = false;
 };
 
 struct OverlayManager::Impl {
@@ -38,7 +40,7 @@ struct OverlayManager::Impl {
     Microsoft::WRL::ComPtr<IDXGISwapChain> swap_chain;
     PFN_Present TruePresent = nullptr;
     static OverlayManager::Impl* instance;
-    TrayManager tray_manager; // Tray manager instance
+    TrayManager tray_manager;
 
     void AddOverlay(const std::wstring& name, const std::wstring& url, UINT modifiers, UINT key) {
         overlays.push_back({ name, url, modifiers, key });
@@ -57,7 +59,9 @@ struct OverlayManager::Impl {
         CreateDirectoryW(userDataFolder.c_str(), nullptr);
 
         for (auto& overlay : overlays) {
-            HWND hwnd = CreateWindowExW(WS_EX_TOPMOST | WS_EX_LAYERED | WS_EX_NOREDIRECTIONBITMAP,
+            // Add WS_EX_NOACTIVATE to prevent focus stealing
+            HWND hwnd = CreateWindowExW(
+                WS_EX_TOPMOST | WS_EX_LAYERED | WS_EX_NOREDIRECTIONBITMAP | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
                 L"STATIC", overlay.name.c_str(), WS_POPUP,
                 0, 0, 3840, 2160, nullptr, nullptr, GetModuleHandle(nullptr), nullptr);
             if (!hwnd) {
@@ -100,16 +104,9 @@ struct OverlayManager::Impl {
                                     else {
                                         OutputDebugStringW((L"Failed to get ICoreWebView2Controller4 for " + overlay.name + L"\n").c_str());
                                     }
-                                    Microsoft::WRL::ComPtr<ICoreWebView2> webview;
-                                    controller->get_CoreWebView2(&webview);
-                                    if (webview) {
-                                        HRESULT navResult = webview->Navigate(overlay.url.c_str());
-                                        if (SUCCEEDED(navResult)) {
-                                            OutputDebugStringW((L"Navigated to " + overlay.url + L"\n").c_str());
-                                        }
-                                        else {
-                                            OutputDebugStringW((L"Failed to navigate to " + overlay.url + L": HRESULT " + std::to_wstring(navResult) + L"\n").c_str());
-                                        }
+                                    controller->get_CoreWebView2(&overlay.webview);
+                                    if (!overlay.webview) {
+                                        OutputDebugStringW((L"Failed to get WebView2 for " + overlay.name + L"\n").c_str());
                                     }
                                     SetLayeredWindowAttributes(overlay.hwnd, 0, 255, LWA_ALPHA);
                                     ShowWindow(overlay.hwnd, SW_HIDE);
@@ -133,9 +130,19 @@ struct OverlayManager::Impl {
         overlay.visible = !overlay.visible;
         OutputDebugStringW((L"Toggling " + overlay.name + L" to " + (overlay.visible ? L"visible" : L"hidden") + L"\n").c_str());
         if (overlay.controller) {
+            if (overlay.visible && !overlay.loaded && overlay.webview) {
+                HRESULT navResult = overlay.webview->Navigate(overlay.url.c_str());
+                if (SUCCEEDED(navResult)) {
+                    OutputDebugStringW((L"Navigated to " + overlay.url + L"\n").c_str());
+                    overlay.loaded = true;
+                }
+                else {
+                    OutputDebugStringW((L"Failed to navigate to " + overlay.url + L": HRESULT " + std::to_wstring(navResult) + L"\n").c_str());
+                }
+            }
             overlay.controller->put_IsVisible(overlay.visible);
             SetLayeredWindowAttributes(overlay.hwnd, 0, overlay.visible ? 255 : 0, LWA_ALPHA);
-            ShowWindow(overlay.hwnd, overlay.visible ? SW_SHOW : SW_HIDE);
+            ShowWindow(overlay.hwnd, overlay.visible ? SW_SHOWNA : SW_HIDE);
             UpdateWindow(overlay.hwnd);
             OutputDebugStringW((L"Updated window visibility for " + overlay.name + L"\n").c_str());
         }
@@ -189,7 +196,7 @@ struct OverlayManager::Impl {
         }
         OutputDebugStringW(L"COM initialized\n");
         instance = this;
-        tray_manager.InitTrayIcon(); // Initialize tray icon
+        tray_manager.InitTrayIcon();
         HookDirectX();
         CreateOverlayWindows();
 
@@ -206,7 +213,7 @@ struct OverlayManager::Impl {
             TranslateMessage(&msg);
             DispatchMessage(&msg);
         }
-        tray_manager.CleanupTrayIcon(); // Clean up tray icon on exit
+        tray_manager.CleanupTrayIcon();
         CoUninitialize();
         OutputDebugStringW(L"Exiting Run\n");
     }
