@@ -1,0 +1,21 @@
+# Visual Studio
+.vs/
+*.suo
+*.user
+
+# Build outputs
+x64/
+QooOverlay/x64/
+QooOverlay/Debug/
+QooOverlay/Release/
+*.obj
+*.pdb
+*.ilk
+*.exe
+
+# NuGet packages (optional, restore on build)
+packages/
+
+# Misc
+*.log
+Detours-4.0.1/
