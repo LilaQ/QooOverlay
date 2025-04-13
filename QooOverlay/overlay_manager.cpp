@@ -10,6 +10,7 @@
 #include <shlobj.h>
 #include <knownfolders.h>
 #include "tray_manager.h"
+#include <ShellScalingApi.h>
 using namespace Microsoft::WRL;
 
 #pragma comment(lib, "user32.lib")
@@ -245,6 +246,15 @@ struct OverlayManager::Impl {
 
     void Run() {
         OutputDebugStringW(L"Starting Run\n");
+
+        // Set DPI awareness to ignore Windows scaling
+        if (!SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)) {
+            OutputDebugStringW(L"Failed to set DPI awareness\n");
+        }
+        else {
+            OutputDebugStringW(L"DPI awareness set to per-monitor V2\n");
+        }
+
         HRESULT hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
         if (FAILED(hr)) {
             OutputDebugStringW((L"CoInitializeEx failed: HRESULT " + std::to_wstring(hr) + L"\n").c_str());
