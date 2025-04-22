@@ -11,6 +11,7 @@
 #include <knownfolders.h>
 #include "tray_manager.h"
 #include <ShellScalingApi.h>
+
 using namespace Microsoft::WRL;
 
 #pragma comment(lib, "user32.lib")
@@ -45,6 +46,7 @@ struct OverlayManager::Impl {
     PFN_Present TruePresent = nullptr;
     static OverlayManager::Impl* instance;
     TrayManager tray_manager;
+    HHOOK keyboardHook = nullptr; // Low-level keyboard hook
 
     void AddOverlay(const std::wstring& name, const std::wstring& url, UINT modifiers, UINT key) {
         overlays.push_back({ name, url, modifiers, key });
@@ -111,6 +113,7 @@ struct OverlayManager::Impl {
                                     controller->get_CoreWebView2(&overlay.webview);
                                     if (!overlay.webview) {
                                         OutputDebugStringW((L"Failed to get WebView2 for " + overlay.name + L"\n").c_str());
+                                        return E_FAIL;
                                     }
                                     SetLayeredWindowAttributes(overlay.hwnd, 0, 255, LWA_ALPHA);
                                     ShowWindow(overlay.hwnd, SW_HIDE);
@@ -124,7 +127,6 @@ struct OverlayManager::Impl {
         }
         OutputDebugStringW(L"Finished CreateOverlayWindows\n");
     }
-
 
     void ToggleOverlay(size_t index) {
         if (index >= overlays.size()) {
@@ -186,6 +188,7 @@ struct OverlayManager::Impl {
                                     if (settings) {
                                         settings->put_AreDefaultContextMenusEnabled(false);
                                     }
+
                                     HRESULT navResult = overlay.webview->Navigate(overlay.url.c_str());
                                     if (SUCCEEDED(navResult)) {
                                         OutputDebugStringW((L"Navigated to " + overlay.url + L"\n").c_str());
@@ -244,6 +247,56 @@ struct OverlayManager::Impl {
         OutputDebugStringW(L"HookDirectX deferred to DetouredPresent\n");
     }
 
+    // Low-level keyboard hook callback
+    static LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam) {
+        if (nCode < 0) {
+            return CallNextHookEx(nullptr, nCode, wParam, lParam);
+        }
+
+        if (wParam == WM_KEYDOWN) {
+            KBDLLHOOKSTRUCT* kbStruct = (KBDLLHOOKSTRUCT*)lParam;
+            UINT key = kbStruct->vkCode;
+
+            // Check if any overlay is visible
+            bool handled = false;
+            for (auto& overlay : instance->overlays) {
+                if (overlay.visible && overlay.webview) {
+                    if (key == VK_LEFT || key == VK_RIGHT || key == VK_SPACE) {
+                        // Map the virtual key to a JavaScript key name
+                        std::wstring jsKey;
+                        if (key == VK_LEFT) {
+                            jsKey = L"ArrowLeft";
+                        }
+                        else if (key == VK_RIGHT) {
+                            jsKey = L"ArrowRight";
+                        }
+                        else if (key == VK_SPACE) {
+                            jsKey = L"Space";
+                        }
+                        else {
+                            continue; // Ignore other keys for now
+                        }
+
+                        // Execute JavaScript to dispatch a keydown event
+                        std::wstring script = L"(() => { "
+                            L"const event = new KeyboardEvent('keydown', { key: '" + jsKey + L"', bubbles: true }); "
+                            L"document.dispatchEvent(event); "
+                            L"})();";
+                        overlay.webview->ExecuteScript(script.c_str(), nullptr);
+                        handled = true;
+                        break; // Only handle the first visible overlay
+                    }
+                }
+            }
+
+            if (handled) {
+                return 1; // Prevent the keypress from being processed further
+            }
+        }
+
+        return CallNextHookEx(nullptr, nCode, wParam, lParam);
+    }
+
     void Run() {
         OutputDebugStringW(L"Starting Run\n");
 
@@ -266,6 +319,15 @@ struct OverlayManager::Impl {
         HookDirectX();
         CreateOverlayWindows();
 
+        // Set up the low-level keyboard hook
+        keyboardHook = SetWindowsHookEx(WH_KEYBOARD_LL, LowLevelKeyboardProc, GetModuleHandle(nullptr), 0);
+        if (keyboardHook == nullptr) {
+            OutputDebugStringW(L"Failed to set keyboard hook\n");
+        }
+        else {
+            OutputDebugStringW(L"Keyboard hook set successfully\n");
+        }
+
         MSG msg;
         while (GetMessage(&msg, nullptr, 0, 0)) {
             if (msg.message == WM_HOTKEY) {
@@ -279,6 +341,14 @@ struct OverlayManager::Impl {
             TranslateMessage(&msg);
             DispatchMessage(&msg);
         }
+
+        // Clean up the keyboard hook
+        if (keyboardHook) {
+            UnhookWindowsHookEx(keyboardHook);
+            keyboardHook = nullptr;
+            OutputDebugStringW(L"Keyboard hook removed\n");
+        }
+
         tray_manager.CleanupTrayIcon();
         for (auto& overlay : overlays) {
             if (overlay.navCompletedTokenBlank.value != 0) {
